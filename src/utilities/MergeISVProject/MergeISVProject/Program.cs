@@ -108,7 +108,8 @@ namespace MergeISVProject
 		/// It all starts here folks!
 		/// </summary>
 		/// <param name="args">The command-line arguments passed in</param>
-		public static void Main(string[] args)
+		/// <returns>Zero when packaging succeeds; otherwise, one.</returns>
+		public static int Main(string[] args)
 		{
             var bypassLogfileDisplay = false;
 			var applicationError = false;
@@ -124,9 +125,7 @@ namespace MergeISVProject
 					// We don't want the log file to be displayed
 					// so we'll prevent that from happening
 					bypassLogfileDisplay = true;
-
-					// Wait...
-					Console.ReadLine();
+					applicationError = true;
 				}
 				else
 				{
@@ -150,6 +149,8 @@ namespace MergeISVProject
 					_Logger.ShowLog();
 				}
 			}
+
+			return applicationError ? 1 : 0;
 		}
 		#endregion
 	}

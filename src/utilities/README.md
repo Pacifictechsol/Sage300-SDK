@@ -17,6 +17,12 @@ them up for deployment. It also provides JavaScript minification functionality a
 deploy the solution into a local Sage 300 installation for testing purposes when the solution is 
 in **Release** mode.
 
+When a Web project configures `Microsoft.CodeDom.Providers.DotNetCompilerPlatform` in its root
+`Web.config`, the utility temporarily stages that configuration, the provider assembly, and the
+project's local `bin\roslyn` compiler payload for Razor precompilation. The Web project remains
+responsible for selecting and restoring the provider package version. Projects without this
+configuration continue to use the .NET Framework CodeDOM provider.
+
 > As a reminder, when building a solution in **Release** mode be sure to either re-start IIS or stop IIS
 prior to building the solution. This is important if you have previously built in **Release** mode and 
 have accessed the Sage 300 web screens as the worker role will be holding onto some assemblies and

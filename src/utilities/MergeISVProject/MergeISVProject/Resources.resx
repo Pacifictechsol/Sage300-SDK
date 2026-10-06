@@ -118,7 +118,13 @@
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
   <data name="Error_CouldNotCompileRazorViews" xml:space="preserve">
-    <value>The post-build utility MergeISVProject could not compile the razor view(s). While the build was successful, the deployment was unsuccessful. Therefore, check view(s) for issue(s) (i.e. localization syntax).</value>
+    <value>The post-build utility MergeISVProject could not compile the Razor views. Check the compiler output and views for errors (for example, localization syntax).</value>
+  </data>
+  <data name="Error_RoslynCompilerAssetsMissing" xml:space="preserve">
+    <value>The web project configures the Roslyn CodeDOM provider, but a required compiler asset was not found at '{0}'. Restore Microsoft.CodeDom.Providers.DotNetCompilerPlatform before packaging.</value>
+  </data>
+  <data name="Error_WebInfrastructureMissing" xml:space="preserve">
+    <value>Microsoft.Web.Infrastructure.dll was not found in the web project bin or at '{0}'. Set Sage300WebSdkDir to the Sage 300 Web SDK root and restart the build process.</value>
   </data>
   <data name="Error_DeploymentFolderLockedOrInUse" xml:space="preserve">
     <value>Sorry, the folder '{0}' could not be deleted. It appears as though the '{0}' folder is locked or in use. Please ensure that there are no command prompts or File Explorer instances referring to the '{0}' folder (or any of it's sub-folders).</value>

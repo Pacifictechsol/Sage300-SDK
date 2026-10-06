@@ -32,6 +32,8 @@ namespace MergeISVProject
 			Error_InvalidCommandLineParameters = 0,
 			Error_Sage300WebFolderMissing,
 			Error_CouldNotCompileRazorViews,
+			Error_RoslynCompilerAssetsMissing,
+			Error_WebInfrastructureMissing,
 			Error_InvalidBuildProfile,
 			Error_Sage300Missing,
 			Error_DeploymentFolderLockedOrInUse,
@@ -99,6 +101,8 @@ namespace MergeISVProject
 		public static string Error_InvalidCommandLineParameters => RM.GetString(IndexEnum.Error_InvalidCommandLineParameters.ToString());
 		public static string Error_Sage300WebFolderMissing => RM.GetString(IndexEnum.Error_Sage300WebFolderMissing.ToString());
 		public static string Error_CouldNotCompileRazorViews => RM.GetString(IndexEnum.Error_CouldNotCompileRazorViews.ToString());
+		public static string Error_RoslynCompilerAssetsMissing => RM.GetString(IndexEnum.Error_RoslynCompilerAssetsMissing.ToString());
+		public static string Error_WebInfrastructureMissing => RM.GetString(IndexEnum.Error_WebInfrastructureMissing.ToString());
 		public static string Error_InvalidBuildProfile => RM.GetString(IndexEnum.Error_InvalidBuildProfile.ToString());
 		public static string Error_Sage300Missing => RM.GetString(IndexEnum.Error_Sage300Missing.ToString());
 		public static string Error_DeploymentFolderLockedOrInUse => RM.GetString(IndexEnum.Error_DeploymentFolderLockedOrInUse.ToString());

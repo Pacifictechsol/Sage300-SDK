@@ -32,6 +32,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Xml.Linq;
 #endregion
 
 namespace MergeISVProject
@@ -44,6 +45,9 @@ namespace MergeISVProject
 		#region Constants
 		const string BUILD_PROFILE_RELEASE = @"release";
 		const bool OVERWRITE = true;
+		const string ROSLYN_COMPILER_FOLDER = @"roslyn";
+		const string ROSLYN_PROVIDER_ASSEMBLY = @"Microsoft.CodeDom.Providers.DotNetCompilerPlatform.dll";
+		const string ROSLYN_PROVIDER_TYPE = @"Microsoft.CodeDom.Providers.DotNetCompilerPlatform";
         const string WEB_CONFIG = @"web.config";
 		#endregion
 
@@ -285,23 +289,151 @@ namespace MergeISVProject
         /// Compile the Razor views and put into the 'Compiled' folder.
         /// Move the compiled files back to the 'Staging' folder
         /// </summary>
+		internal static bool StageRoslynCompilerAssets(string sourceRoot, string stagingRoot, ILogger logger)
+		{
+			var sourceWebConfig = Path.Combine(sourceRoot, WEB_CONFIG);
+			if (!File.Exists(sourceWebConfig))
+			{
+				return false;
+			}
+
+			var webConfig = XDocument.Load(sourceWebConfig);
+			var usesRoslyn = webConfig
+				.Descendants()
+				.Where(element => string.Equals(element.Name.LocalName, "compiler", StringComparison.OrdinalIgnoreCase))
+				.SelectMany(element => element.Attributes())
+				.Any(attribute => string.Equals(attribute.Name.LocalName, "type", StringComparison.OrdinalIgnoreCase)
+					&& attribute.Value.IndexOf(ROSLYN_PROVIDER_TYPE, StringComparison.OrdinalIgnoreCase) >= 0);
+
+			if (!usesRoslyn)
+			{
+				return false;
+			}
+
+			var sourceBin = Path.Combine(sourceRoot, FolderNameConstants.BIN);
+			var stagingBin = Path.Combine(stagingRoot, FolderNameConstants.BIN);
+			var sourceProvider = Path.Combine(sourceBin, ROSLYN_PROVIDER_ASSEMBLY);
+			if (!File.Exists(sourceProvider))
+			{
+				throw new MergeISVProjectException(
+					logger,
+					string.Format(Messages.Error_RoslynCompilerAssetsMissing, sourceProvider));
+			}
+
+			var sourceCompilerFolder = Path.Combine(sourceBin, ROSLYN_COMPILER_FOLDER);
+			if (!Directory.Exists(sourceCompilerFolder))
+			{
+				throw new MergeISVProjectException(
+					logger,
+					string.Format(Messages.Error_RoslynCompilerAssetsMissing, sourceCompilerFolder));
+			}
+
+			File.Copy(sourceWebConfig, Path.Combine(stagingRoot, WEB_CONFIG), overwrite: true);
+			File.Copy(sourceProvider, Path.Combine(stagingBin, ROSLYN_PROVIDER_ASSEMBLY), overwrite: true);
+			FileSystem.CopyDirectory(sourceCompilerFolder, Path.Combine(stagingBin, ROSLYN_COMPILER_FOLDER));
+
+			logger.Log("Staged the project-configured Roslyn CodeDOM provider for Razor compilation.");
+			return true;
+		}
+
+		internal static void RemoveRoslynCompilerAssets(string stagingBin, ILogger logger)
+		{
+			var compilerFolder = Path.Combine(stagingBin, ROSLYN_COMPILER_FOLDER);
+			if (Directory.Exists(compilerFolder))
+			{
+				var compilerServerPath = Path.GetFullPath(Path.Combine(compilerFolder, "VBCSCompiler.exe"));
+				foreach (var process in Process.GetProcessesByName("VBCSCompiler"))
+				{
+					using (process)
+					{
+						string processPath;
+						try
+						{
+							processPath = process.MainModule?.FileName;
+						}
+						catch (InvalidOperationException)
+						{
+							continue;
+						}
+						catch (System.ComponentModel.Win32Exception)
+						{
+							continue;
+						}
+
+						if (!string.Equals(processPath, compilerServerPath, StringComparison.OrdinalIgnoreCase))
+						{
+							continue;
+						}
+
+						logger.Log($"Stopping Roslyn compiler server {processPath}...");
+						try
+						{
+							process.Kill();
+							process.WaitForExit();
+						}
+						catch (InvalidOperationException)
+						{
+						}
+					}
+				}
+
+				Directory.Delete(compilerFolder, recursive: true);
+			}
+
+			var provider = Path.Combine(stagingBin, ROSLYN_PROVIDER_ASSEMBLY);
+			if (File.Exists(provider))
+			{
+				File.Delete(provider);
+			}
+		}
+
+		/// <summary>
+		/// Compile the Razor views and put into the 'Compiled' folder.
+		/// Move the compiled files back to the 'Staging' folder
+		/// </summary>
+		internal static void RunAspNetCompiler(ProcessStartInfo startInfo, ILogger logger)
+		{
+			using (var process = new Process { StartInfo = startInfo })
+			{
+				logger.Log($"Starting Process {process.StartInfo.FileName}...");
+				process.Start();
+				process.WaitForExit();
+
+				if (process.ExitCode != 0)
+				{
+					throw new MergeISVProjectException(
+						logger,
+						$"{Messages.Error_CouldNotCompileRazorViews} aspnet_compiler.exe exit code: {process.ExitCode}.");
+				}
+
+				logger.Log($"Process {process.StartInfo.FileName} completed with exit code {process.ExitCode}.");
+			}
+		}
+
+		/// <summary>
+		/// Compile the Razor views and put into the 'Compiled' folder.
+		/// Move the compiled files back to the 'Staging' folder
+		/// </summary>
         private void _Stage_CompileViewsAndMoveResultsToStagingFolder()
 		{
 			_Logger.LogMethodHeader($"{this.GetType().Name}.{Utilities.GetCurrentMethod()}");
+			var roslynCompilerStaged = StageRoslynCompilerAssets(
+				_FolderManager.Originals.Root,
+				_FolderManager.Staging.Root,
+				_Logger);
 
-			var p = new Process
+			var startInfo = new ProcessStartInfo
 			{
-				StartInfo =
-				{
-					UseShellExecute = false,
-					FileName = Path.Combine(_Options.DotNetFrameworkPath.OptionValue, "aspnet_compiler.exe"),
-					Arguments = $" -v / -p \"{_FolderManager.Staging.Root}\" -fixednames \"{_FolderManager.Compiled.Root}\""
-				}
+				UseShellExecute = false,
+				FileName = Path.Combine(_Options.DotNetFrameworkPath.OptionValue, "aspnet_compiler.exe"),
+				Arguments = $" -v / -p \"{_FolderManager.Staging.Root}\" -fixednames \"{_FolderManager.Compiled.Root}\""
 			};
-            _Logger.Log($"Starting Process {p.StartInfo.FileName}...");
-            p.Start();
-			p.WaitForExit();
-            _Logger.Log($"Process {p.StartInfo.FileName} completed.");
+			RunAspNetCompiler(startInfo, _Logger);
+
+			if (roslynCompilerStaged)
+			{
+				RemoveRoslynCompilerAssets(_FolderManager.Staging.Bin, _Logger);
+			}
 
             // Now, move the results of the compilation back to the Staging folder
 
@@ -316,6 +448,11 @@ namespace MergeISVProject
             // Copy compile/bin back to staging/bin
             _Logger.Log("Copying Compile/Bin back to Staging/Bin...");
             FileSystem.CopyDirectory(_FolderManager.Compiled.Bin, _FolderManager.Staging.Bin);
+
+			if (roslynCompilerStaged)
+			{
+				RemoveRoslynCompilerAssets(_FolderManager.Staging.Bin, _Logger);
+			}
 
 			// Delete non-vendor related files from staging/bin folder
 
@@ -525,9 +662,8 @@ namespace MergeISVProject
             // Copy everything to the 'Web' deployment folder
             FileSystem.CopyDirectory(_FolderManager.Staging.Root, _FolderManager.FinalWeb.Root);
 
-            // D-39067
-            // Because ENABLE_STAGE_WEBCONFIG has been reactivated, we have to ensure that the 
-            // final web root folder does NOT have a copy of the main web.config file.
+			// The root web.config may be staged temporarily to configure Roslyn compilation,
+			// but it must not be included in the deployment package.
             var webConfigFilePath = Path.Combine(_FolderManager.FinalWeb.Root, WEB_CONFIG);
             if (File.Exists(webConfigFilePath))
             {
@@ -617,14 +753,38 @@ namespace MergeISVProject
                 // If pattern is the *.Web.Infrastructure.dll, it gets copied from the SDK (as of 2026.0)
 				if (pattern.Equals("*.Web.Infrastructure.dll", StringComparison.OrdinalIgnoreCase))
 				{
-					var fileName = "Microsoft.Web.Infrastructure.dll";
-                    var source = Path.Combine(Environment.GetEnvironmentVariable("Sage300WebSdkDir"), "bin", "utilities", fileName);
+					var source = ResolveWebInfrastructurePath(sourceDir, _Logger);
+					var fileName = Path.GetFileName(source);
 					CopyFile(false, source, Path.Combine(destDir, fileName), true);
                     continue;
                 }
 
                 CopyFiles(false, sourceDir, pattern, destDir, true);
 			}
+		}
+
+		internal static string ResolveWebInfrastructurePath(string webBin, ILogger logger)
+		{
+			const string fileName = "Microsoft.Web.Infrastructure.dll";
+			var webSource = Path.Combine(webBin, fileName);
+			if (File.Exists(webSource))
+			{
+				return webSource;
+			}
+
+			var sdkRoot = Environment.GetEnvironmentVariable("Sage300WebSdkDir");
+			var source = string.IsNullOrWhiteSpace(sdkRoot)
+				? @"%Sage300WebSdkDir%\bin\utilities\Microsoft.Web.Infrastructure.dll"
+				: Path.Combine(sdkRoot, "bin", "utilities", fileName);
+
+			if (!File.Exists(source))
+			{
+				throw new MergeISVProjectException(
+					logger,
+					string.Format(Messages.Error_WebInfrastructureMissing, source));
+			}
+
+			return source;
 		}
 
 		/// <summary>
