@@ -43,6 +43,54 @@ namespace MergeISVProjectTests
         }
 
         [TestMethod]
+        public void RunAspNetCompilerWithRoslynCleanup_NonzeroExit_RemovesTemporaryPayload()
+        {
+            var testRoot = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+            var stagingBin = Path.Combine(testRoot, "bin");
+            var compilerFolder = Path.Combine(stagingBin, "roslyn");
+            var provider = Path.Combine(stagingBin, "Microsoft.CodeDom.Providers.DotNetCompilerPlatform.dll");
+            var startInfo = new ProcessStartInfo
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                FileName = Environment.GetEnvironmentVariable("ComSpec"),
+                Arguments = "/d /c exit 42"
+            };
+            var logger = new Logger("MergeISVProjectTests.log", Path.GetTempPath(), false);
+
+            try
+            {
+                Directory.CreateDirectory(compilerFolder);
+                File.WriteAllText(provider, "provider");
+                File.WriteAllText(Path.Combine(compilerFolder, "csc.exe"), "compiler");
+
+                try
+                {
+                    MergeISVProjectDriver.RunAspNetCompilerWithRoslynCleanup(
+                        startInfo,
+                        stagingBin,
+                        true,
+                        logger);
+                    Assert.Fail("Expected a compiler failure for a nonzero process exit code.");
+                }
+                catch (MergeISVProjectException exception)
+                {
+                    StringAssert.Contains(exception.Message, "aspnet_compiler.exe exit code: 42");
+                }
+
+                Assert.IsFalse(File.Exists(provider));
+                Assert.IsFalse(Directory.Exists(compilerFolder));
+            }
+            finally
+            {
+                if (Directory.Exists(testRoot))
+                {
+                    Directory.Delete(testRoot, recursive: true);
+                }
+            }
+        }
+
+        [TestMethod]
         public void ResolveWebInfrastructurePath_MissingSdkEnvironment_ThrowsHelpfulError()
         {
             const string variableName = "Sage300WebSdkDir";

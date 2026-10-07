@@ -411,6 +411,57 @@ namespace MergeISVProject
 		}
 
 		/// <summary>
+		/// Run the Razor compiler and always remove the temporarily staged Roslyn assets.
+		/// Preserve the compiler exception when compilation and cleanup both fail.
+		/// </summary>
+		/// <param name="startInfo">The Razor compiler process configuration</param>
+		/// <param name="stagingBin">The staging bin folder containing the temporary Roslyn assets</param>
+		/// <param name="roslynCompilerStaged">Whether Roslyn assets were staged for this compilation</param>
+		/// <param name="logger">The application logger</param>
+		internal static void RunAspNetCompilerWithRoslynCleanup(
+			ProcessStartInfo startInfo,
+			string stagingBin,
+			bool roslynCompilerStaged,
+			ILogger logger)
+		{
+			Exception compilerException = null;
+
+			try
+			{
+				RunAspNetCompiler(startInfo, logger);
+			}
+			catch (Exception exception)
+			{
+				compilerException = exception;
+				throw;
+			}
+			finally
+			{
+				if (roslynCompilerStaged)
+				{
+					try
+					{
+						RemoveRoslynCompilerAssets(stagingBin, logger);
+					}
+					catch (Exception cleanupException)
+					{
+						var message = string.Format(
+							Messages.Error_RoslynCompilerCleanupFailed,
+							stagingBin,
+							cleanupException.Message);
+
+						if (compilerException == null)
+						{
+							throw new MergeISVProjectException(logger, message, cleanupException);
+						}
+
+						logger.LogError(message);
+					}
+				}
+			}
+		}
+
+		/// <summary>
 		/// Compile the Razor views and put into the 'Compiled' folder.
 		/// Move the compiled files back to the 'Staging' folder
 		/// </summary>
@@ -428,12 +479,11 @@ namespace MergeISVProject
 				FileName = Path.Combine(_Options.DotNetFrameworkPath.OptionValue, "aspnet_compiler.exe"),
 				Arguments = $" -v / -p \"{_FolderManager.Staging.Root}\" -fixednames \"{_FolderManager.Compiled.Root}\""
 			};
-			RunAspNetCompiler(startInfo, _Logger);
-
-			if (roslynCompilerStaged)
-			{
-				RemoveRoslynCompilerAssets(_FolderManager.Staging.Bin, _Logger);
-			}
+			RunAspNetCompilerWithRoslynCleanup(
+				startInfo,
+				_FolderManager.Staging.Bin,
+				roslynCompilerStaged,
+				_Logger);
 
             // Now, move the results of the compilation back to the Staging folder
 

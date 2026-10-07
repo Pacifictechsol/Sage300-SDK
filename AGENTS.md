@@ -51,7 +51,7 @@
 - Treat unpacked folders under `src/wizards/Templates` as template source. Regenerate `.vstemplate` files and ZIP archives with the local scripts and copy them to the wizard package; do not edit generated archives directly.
 - Shared web assets are duplicated across UI, customization, and upgrade template trees. Search those trees and keep intentional copies synchronized when changing template framework assets.
 - Never edit `obj/`, NuGet-generated files, package caches, generated template archives, or build outputs as source. Update their owning project or template and regenerate them when the task requires refreshed artifacts.
-- When a task explicitly requires refreshed distribution binaries, use the owning project's Release build or publish workflow, verify every distributed copy is byte-identical, and keep restore/build intermediates out of the final change.
+- When a task explicitly requires refreshed distribution binaries, update only copies that already exist in source control unless the task explicitly asks to add a new distribution location. Build or post-build workflows may create untracked copies; remove those generated files rather than adding them. Verify the retained tracked copies and keep restore/build intermediates out of the final change.
 - `samples/UpdateSamplesFromColumbusWeb.bat` and resource synchronization scripts depend on Sage-internal source trees. Do not run them unless the required internal environment is explicitly available.
 - Keep sample changes within the selected sample solution. Use `samples/ClearStatistics` and the corresponding tutorial as the primary reference for a generated web screen; use module maps under [maps](maps/README.md) when tracing controller or repository relationships.
 

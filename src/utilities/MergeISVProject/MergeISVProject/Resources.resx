@@ -123,6 +123,9 @@
   <data name="Error_RoslynCompilerAssetsMissing" xml:space="preserve">
     <value>The web project configures the Roslyn CodeDOM provider, but a required compiler asset was not found at '{0}'. Restore Microsoft.CodeDom.Providers.DotNetCompilerPlatform before packaging.</value>
   </data>
+  <data name="Error_RoslynCompilerCleanupFailed" xml:space="preserve">
+    <value>Could not remove the temporary Roslyn compiler assets from '{0}'. {1}</value>
+  </data>
   <data name="Error_WebInfrastructureMissing" xml:space="preserve">
     <value>Microsoft.Web.Infrastructure.dll was not found in the web project bin or at '{0}'. Set Sage300WebSdkDir to the Sage 300 Web SDK root and restart the build process.</value>
   </data>

@@ -27,8 +27,8 @@ vstest.console.exe src\utilities\MergeISVProject\MergeISVProjectTests\bin\Debug\
 - `build.bat` is a legacy Visual Studio 2013 Release-build wrapper. Prefer the explicit `msbuild.exe` command unless reproducing that workflow.
 - The compiler and exit-code regressions are in `ApplicationExitCodeTests`. Run them with `/TestCaseFilter:FullyQualifiedName~ApplicationExitCodeTests`.
 - `CommandLineOptions_Test_AllValidArguments` validates that its hardcoded folders exist, and `CommandLineOptions_Test_CleanupArguments` has a count assertion tied to its argument fixture. Check those fixtures before treating either failure as a product regression.
-- A successful application build copies `MergeISVProject.exe` into `bin\utilities`, `src\wizards\Templates\UIWizards\Web`, and `src\wizards\Templates\UpgradeWizard\Items`. ZIP and VSIX artifacts do not currently embed another copy.
-- When refreshing distributed executables, rebuild `Release`, compare assembly versions and SHA-256 hashes across all three destinations, and remove `bin` and restored `packages` intermediates afterward. Only `bin\utilities\MergeISVProject.exe` is currently tracked; review the two generated template copies intentionally.
+- A successful application build copies `MergeISVProject.exe` into `bin\utilities`, `src\wizards\Templates\UIWizards\Web`, and `src\wizards\Templates\UpgradeWizard\Items`. Only `bin\utilities\MergeISVProject.exe` is currently tracked; the two template copies are generated build output, not source artifacts.
+- When refreshing the distributed executable, rebuild `Release`, retain and verify only `bin\utilities\MergeISVProject.exe`, and remove the two untracked template copies produced by the post-build event. Do not add a new executable location unless the task explicitly requires it. Remove project `bin` and restored `packages` intermediates afterward.
 
 ## Architecture
 
@@ -51,7 +51,7 @@ vstest.console.exe src\utilities\MergeISVProject\MergeISVProjectTests\bin\Debug\
 - Log operational steps and failures through `ILogger`. Use `MergeISVProjectException` for failures that have already been logged and should terminate the run.
 - Keep the Roslyn provider version project-owned: stage the provider selected and restored by the generated Web project rather than adding a provider package dependency to this utility.
 - Stop only a `VBCSCompiler.exe` whose full executable path belongs to the staged `bin\roslyn` payload; never terminate unrelated compiler servers by process name alone.
-- Stop that staged compiler server and remove its payload immediately after `aspnet_compiler.exe` exits, before copying `Compiled\bin` over `Staging\bin`; otherwise the bulk copy can fail while overwriting locked Roslyn files.
+- Stop that staged compiler server and remove its payload in a `finally` path after `aspnet_compiler.exe` exits, including when compilation fails, and before copying `Compiled\bin` over `Staging\bin`; otherwise failed builds can leave locked Roslyn files behind and successful builds can fail during the bulk copy.
 - Loading the built executable with `Assembly.LoadFrom` in a persistent PowerShell session locks the build output. Use an isolated smoke-test process or release that host before rebuilding.
 - Edit `Resources.resx`, not the auto-generated `Resources.Designer.cs`, for resource text changes.
 - Do not run `postbuild.bat` or `psCopyArtifactToPublish.ps1` unless the task explicitly requires refreshing all distributed copies; both scripts copy binaries and dependencies across multiple repository locations.
