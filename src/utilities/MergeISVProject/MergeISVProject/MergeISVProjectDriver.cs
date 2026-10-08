@@ -32,6 +32,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Xml.Linq;
 #endregion
 
@@ -46,8 +47,12 @@ namespace MergeISVProject
 		const string BUILD_PROFILE_RELEASE = @"release";
 		const bool OVERWRITE = true;
 		const string ROSLYN_COMPILER_FOLDER = @"roslyn";
+		const string ROSLYN_COMPILER_SERVER_TTL_ENVIRONMENT_VARIABLE = @"VBCSCOMPILER_TTL";
+		const string ROSLYN_COMPILER_SERVER_TTL_SECONDS = @"1";
 		const string ROSLYN_PROVIDER_ASSEMBLY = @"Microsoft.CodeDom.Providers.DotNetCompilerPlatform.dll";
 		const string ROSLYN_PROVIDER_TYPE = @"Microsoft.CodeDom.Providers.DotNetCompilerPlatform";
+		const int ROSLYN_CLEANUP_RETRY_COUNT = 20;
+		const int ROSLYN_CLEANUP_RETRY_DELAY_MILLISECONDS = 250;
         const string WEB_CONFIG = @"web.config";
 		#endregion
 
@@ -336,6 +341,14 @@ namespace MergeISVProject
 			return true;
 		}
 
+		internal static void ConfigureRoslynCompilerServer(ProcessStartInfo startInfo, bool roslynCompilerStaged)
+		{
+			if (roslynCompilerStaged)
+			{
+				startInfo.EnvironmentVariables[ROSLYN_COMPILER_SERVER_TTL_ENVIRONMENT_VARIABLE] = ROSLYN_COMPILER_SERVER_TTL_SECONDS;
+			}
+		}
+
 		internal static void RemoveRoslynCompilerAssets(string stagingBin, ILogger logger)
 		{
 			var compilerFolder = Path.Combine(stagingBin, ROSLYN_COMPILER_FOLDER);
@@ -377,13 +390,36 @@ namespace MergeISVProject
 					}
 				}
 
-				Directory.Delete(compilerFolder, recursive: true);
+				DeleteRoslynCompilerFolderWithRetry(compilerFolder, logger);
 			}
 
 			var provider = Path.Combine(stagingBin, ROSLYN_PROVIDER_ASSEMBLY);
 			if (File.Exists(provider))
 			{
 				File.Delete(provider);
+			}
+		}
+
+		private static void DeleteRoslynCompilerFolderWithRetry(string compilerFolder, ILogger logger)
+		{
+			for (var attempt = 1; attempt <= ROSLYN_CLEANUP_RETRY_COUNT; attempt++)
+			{
+				try
+				{
+					if (Directory.Exists(compilerFolder))
+					{
+						Directory.Delete(compilerFolder, recursive: true);
+					}
+
+					return;
+				}
+				catch (Exception exception) when (
+					(exception is IOException || exception is UnauthorizedAccessException)
+					&& attempt < ROSLYN_CLEANUP_RETRY_COUNT)
+				{
+					logger.Log($"Roslyn compiler assets are still in use. Retrying cleanup ({attempt}/{ROSLYN_CLEANUP_RETRY_COUNT})...");
+					Thread.Sleep(ROSLYN_CLEANUP_RETRY_DELAY_MILLISECONDS);
+				}
 			}
 		}
 
@@ -479,6 +515,7 @@ namespace MergeISVProject
 				FileName = Path.Combine(_Options.DotNetFrameworkPath.OptionValue, "aspnet_compiler.exe"),
 				Arguments = $" -v / -p \"{_FolderManager.Staging.Root}\" -fixednames \"{_FolderManager.Compiled.Root}\""
 			};
+			ConfigureRoslynCompilerServer(startInfo, roslynCompilerStaged);
 			RunAspNetCompilerWithRoslynCleanup(
 				startInfo,
 				_FolderManager.Staging.Bin,

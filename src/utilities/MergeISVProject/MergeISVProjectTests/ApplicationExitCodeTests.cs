@@ -1,6 +1,8 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using MergeISVProject;
 using MergeISVProject.CustomExceptions;
 using MergeISVProject.Logging;
@@ -252,6 +254,16 @@ namespace MergeISVProjectTests
         }
 
         [TestMethod]
+        public void ConfigureRoslynCompilerServer_ConfiguredProject_SetsChildProcessTtl()
+        {
+            var startInfo = new ProcessStartInfo();
+
+            MergeISVProjectDriver.ConfigureRoslynCompilerServer(startInfo, true);
+
+            Assert.AreEqual("1", startInfo.EnvironmentVariables["VBCSCOMPILER_TTL"]);
+        }
+
+        [TestMethod]
         public void RemoveRoslynCompilerAssets_RemovesTemporaryPayload()
         {
             var testRoot = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
@@ -269,6 +281,47 @@ namespace MergeISVProjectTests
                 MergeISVProjectDriver.RemoveRoslynCompilerAssets(stagingBin, logger);
 
                 Assert.IsFalse(File.Exists(provider));
+                Assert.IsFalse(Directory.Exists(compilerFolder));
+            }
+            finally
+            {
+                if (Directory.Exists(testRoot))
+                {
+                    Directory.Delete(testRoot, recursive: true);
+                }
+            }
+        }
+
+        [TestMethod]
+        public void RemoveRoslynCompilerAssets_TransientFileLock_RetriesCleanup()
+        {
+            var testRoot = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+            var stagingBin = Path.Combine(testRoot, "bin");
+            var compilerFolder = Path.Combine(stagingBin, "roslyn");
+            var compilerAssembly = Path.Combine(compilerFolder, "Microsoft.CodeAnalysis.CSharp.dll");
+
+            try
+            {
+                Directory.CreateDirectory(compilerFolder);
+                File.WriteAllText(compilerAssembly, "compiler");
+
+                var logger = new Logger("MergeISVProjectTests.log", Path.GetTempPath(), false);
+                using (var lockStream = new FileStream(
+                    compilerAssembly,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.Read))
+                {
+                    var releaseTask = Task.Run(() =>
+                    {
+                        Thread.Sleep(500);
+                        lockStream.Dispose();
+                    });
+
+                    MergeISVProjectDriver.RemoveRoslynCompilerAssets(stagingBin, logger);
+                    releaseTask.Wait();
+                }
+
                 Assert.IsFalse(Directory.Exists(compilerFolder));
             }
             finally

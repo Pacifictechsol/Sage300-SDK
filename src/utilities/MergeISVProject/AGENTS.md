@@ -50,6 +50,7 @@ vstest.console.exe src\utilities\MergeISVProject\MergeISVProjectTests\bin\Debug\
 - Keep deployment mutations behind `--nodeploy` and `--testdeploy` semantics. Tests and local verification should avoid writing to a live Sage 300 installation.
 - Log operational steps and failures through `ILogger`. Use `MergeISVProjectException` for failures that have already been logged and should terminate the run.
 - Keep the Roslyn provider version project-owned: stage the provider selected and restored by the generated Web project rather than adding a provider package dependency to this utility.
+- Set `VBCSCOMPILER_TTL` only in the `aspnet_compiler.exe` child environment; never modify the consuming project's source configuration or machine environment. Keep the child lifetime short enough for bounded cleanup retries to remove compiler assets after precompilation.
 - Stop only a `VBCSCompiler.exe` whose full executable path belongs to the staged `bin\roslyn` payload; never terminate unrelated compiler servers by process name alone.
 - Stop that staged compiler server and remove its payload in a `finally` path after `aspnet_compiler.exe` exits, including when compilation fails, and before copying `Compiled\bin` over `Staging\bin`; otherwise failed builds can leave locked Roslyn files behind and successful builds can fail during the bulk copy.
 - Loading the built executable with `Assembly.LoadFrom` in a persistent PowerShell session locks the build output. Use an isolated smoke-test process or release that host before rebuilding.
